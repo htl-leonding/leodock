@@ -1,0 +1,143 @@
+= Derbydb Docker Image
+Thomas W. Stütz
+1.0.0, {docdate}: create manually a derbydb docker image and deploy to gh-packages
+ifndef::imagesdir[:imagesdir: images]
+//:toc-placement!:  // prevents the generation of the doc at this position, so it can be printed afterwards
+//:sourcedir: ../src/main/java
+:icons: font
+:sectnums:    // Nummerierung der Überschriften / section numbering
+:experimental:
+:toclevels: 4
+:toc: left
+
+
+== Dockerfile
+
+[source,dockerfile]
+----
+FROM ubuntu:20.04
+
+ENV DERBY_HOME=/derby/db-derby-10.15.2.0-bin
+ENV PATH="/derby/db-derby-10.15.2.0-bin/bin:/derby/db-derby-10.15.2.0-bin/lib:${PATH}"
+ENV DERBY_LIB=${DERBY_HOME}/lib
+ENV CLASSPATH=${DERBY_LIB}/derby.jar:${DERBY_LIB}/derbynet.jar:${DERBY_LIB}/derbytools.jar:${DERBY_LIB}/derbyoptionaltools.jar:${DERBY_LIB}/derbyclient.jar
+
+RUN apt update && \
+    apt install -y unzip curl default-jdk && \
+    apt -y clean && \
+    rm -r /var/cache/apt /var/lib/apt/lists/*
+
+
+RUN mkdir derby && \
+    cd derby && \
+    curl https://dlcdn.apache.org//db/derby/db-derby-10.15.2.0/db-derby-10.15.2.0-bin.zip -o derbydb.zip && \
+    unzip derbydb.zip && \
+    rm /derby/derbydb.zip && \
+    mkdir /data && \
+    cd /data
+
+WORKDIR /data
+EXPOSE 1527
+
+CMD ["/derby/db-derby-10.15.2.0-bin/bin/startNetworkServer", "-noSecurityManager", "-h", "0.0.0.0"]
+#CMD ["java", "-jar", "derbyrun.jar", "start", "-h", "0.0.0.0"]
+#CMD ["java", "-Dderby.stream.error.field=java.lang.System.out", "org.apache.derby.drda.NetworkServerControl", "start", "-h", "0.0.0.0"]
+----
+
+== Create the Docker Image
+
+.create the Docker image
+[source,bash]
+----
+docker build -t stuetz/derbydb
+----
+
+----
+ $ docker image ls
+REPOSITORY                     TAG       IMAGE ID       CREATED        SIZE
+stuetz/derbydb                 latest    8fa84c379b35   13 hours ago   148MB
+----
+
+.when building repeatedly
+[source,bash]
+----
+docker image rm stuetz/derbydb && docker build -t stuetz/derbydb .
+----
+
+.for working on the command line in the docker container
+[source,bash]
+----
+docker run --rm -it -p 1527:1527 --entrypoint bash stuetz/derbydb
+----
+
+
+
+== Run the Docker Container
+
+.Run w/o volume (data will be deleted w/ container)
+[source,bash]
+----
+docker run -p 1527:1527 --rm -d --name derbydb stuetz/derbydb
+----
+
+.Run w/ volume (bind mount)
+[source,bash]
+----
+docker run -p 1527:1527 --rm -d -v ${PWD}/data:/data --name derbydb stuetz/derbydb
+----
+
+.Login into Docker container
+[source,bash]
+----
+docker exec -it derbydb /bin/bash
+----
+
+
+
+
+== Push the Docker image to ghcr.io
+
+.tag the Docker image
+[source,bash]
+----
+docker tag stuetz/derbydb ghcr.io/htl-leonding/derbydb:1.0.0
+----
+
+
+----
+ $ docker image ls
+REPOSITORY                     TAG       IMAGE ID       CREATED        SIZE
+stuetz/derbydb                 latest    8fa84c379b35   13 hours ago   148MB
+ghcr.io/htl-leonding/derbydb   1.0.0     8fa84c379b35   13 hours ago   148MB
+----
+
+source: https://linuxtut.com/en/1effae6c39ceae3c3d0a/[Steps to push Docker image to GitHub Container Registry (ghcr.io)^]
+
+.login to ghcr.io
+[source,bash]
+----
+cat ~/ghcr-pat.txt | docker login ghcr.io -u htl-leonding --password-stdin
+----
+
+.push image to ghcr.io
+[source,bash]
+----
+$ docker push ghcr.io/htl-leonding/derbydb:1.0.0
+----
+
+----
+The push refers to repository [ghcr.io/htl-leonding/derbydb]
+c50f2ed7d288: Pushing [==========================>                        ]  31.36MB/58.72MB
+9e8980f413ab: Pushed
+a07824c7e824: Pushed
+36ffdceb4c77: Pushing [========================>                          ]  35.29MB/72.78MB
+----
+
+----
+The push refers to repository [ghcr.io/htl-leonding/derbydb]
+c50f2ed7d288: Pushed
+9e8980f413ab: Pushed
+a07824c7e824: Pushed
+36ffdceb4c77: Pushed
+1.0.0: digest: sha256:bc138f871aae9d22c72049b49d5848b9e5be7e5f4e95c805271895b3bb658e54 size: 1159
+----
